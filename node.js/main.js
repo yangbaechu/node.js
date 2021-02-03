@@ -1,22 +1,23 @@
-var http = require('http');
-var fs = require('fs');
-var url = require('url');
-var qs = require('querystring');
-var template = require('./lib/template');
-var path = require('path');
-var sanitizeHtml = require('sanitize-html');
+const http = require('http');
+const fs = require('fs');
+const url = require('url');
+const qs = require('querystring');
+const template = require('./lib/template');
+const path = require('path');
+const sanitizeHtml = require('sanitize-html');
+//const mime = require('mime'); //이미지 형식 알아보는 모듈
 
-var app = http.createServer(function(request,response){
-    var _url = request.url;
-    var queryData = url.parse(_url, true).query;
-    var pathname = url.parse(_url, true).pathname;
+const app = http.createServer(function(request,response){
+    const _url = request.url;
+    const queryData = url.parse(_url, true).query;
+    const pathname = url.parse(_url, true).pathname;
     if(pathname === '/'){
         if(queryData.id === undefined){ //메인 화면
-            fs.readdir('./data', function(error, filelist){
-                var title = 'Welcome';
-                var description = 'Hello, Node.js';
-                var list = template.list(filelist);
-                var html = template.HTML(title, list,
+            fs.readdir('./data', function(error, fileList){
+                let title = 'Welcome';
+                let description = 'Hello, Node.js';
+                let list = template.list(fileList);
+                let html = template.HTML(title, list,
                     `<h2>${title}</h2>${description}`,
                     `<a href="/create">create</a>`
                 );
@@ -24,22 +25,27 @@ var app = http.createServer(function(request,response){
                 response.end(html);
             });
         } else { //하위 글 중 하나를 클릭했을 때
-            fs.readdir('./data', function(error, filelist){
+            fs.readdir('./data', function(error, fileList){
 
-                var filteredId = path.parse(queryData.id).base;
-                fs.readFile(`data/${filteredId}`, 'utf8', function(err, description){
-                    var title = queryData.id;
-                    var list = template.list(filelist);
-                    var sanitizedTitle = sanitizeHtml(title);
-                    var sanitizedDescription = sanitizeHtml(description);
-                    var html = template.HTML(title, list,
+                let filteredId = path.parse(queryData.id).base;
+
+                fs.readFile(`data/${filteredId}`, 'utf8', function(err, data){
+                    let text = JSON.parse(data);
+                    let title = text.title;
+                    let description = text.description;
+                    let writer = text.writer;
+                    let list = template.list(fileList);
+                    let sanitizedTitle = sanitizeHtml(title);
+                    let sanitizedDescription = sanitizeHtml(description);
+                    let html = template.HTML(title, list,
                         `<h2>${sanitizedTitle}</h2>${sanitizedDescription}`,
                         `<a href="/create">create</a>
                 <a href="/update?id=${sanitizedTitle}">update</a>
                 <form action="/delete_process" method="post">
                   <input type="hidden" name="id" value="${sanitizedTitle}">
                   <input type="submit" value="delete">
-                </form>`
+                </form>`,
+                        writer
                     );
                     response.writeHead(200);
                     response.end(html);
@@ -47,12 +53,13 @@ var app = http.createServer(function(request,response){
             });
         }
     } else if(pathname === '/create'){ //create 버튼 클릭한 뒤
-        fs.readdir('./data', function(error, filelist){
-            var title = 'WEB - create';
-            var list = template.list(filelist);
-            var html = template.HTML(title, list, `
+        fs.readdir('./data', function(error, fileList){
+            let title = 'WEB - create';
+            let list = template.list(fileList);
+            let html = template.HTML(title, list, `
           <form action="/create_process" method="post">
             <p><input type="text" name="title" placeholder="title"></p>
+            <p><input type="text" name="writer" placeholder="writer"></p>
             <p>
               <textarea name="description" placeholder="description"></textarea>
             </p>
@@ -60,35 +67,48 @@ var app = http.createServer(function(request,response){
               <input type="submit">
             </p>
           </form>
-        `, '');
+        `, '', ``);
             response.writeHead(200);
             response.end(html);
         });
     } else if(pathname === '/create_process'){ //새 파일 만들고 난 뒤
-        var body = '';
+        let body = '';
         request.on('data', function(data){
             body = body + data;
         });
         request.on('end', function(){
-            var post = qs.parse(body);
-            var title = post.title;
-            var description = post.description;
-            fs.writeFile(`data/${title}`, description, 'utf8', function(err){
+            let post = qs.parse(body);
+            let title = post.title;
+            let writer = post.writer;
+            let description = post.description;
+            console.log(writer);
+            let text = {
+                "title": title,
+                "writer": writer,
+                "description": description
+            }
+
+            let data = JSON.stringify(text, null);
+            fs.writeFile(`data/${title}`, data, 'utf8', function(err){
                 response.writeHead(302, {Location: `/?id=${title}`});
                 response.end();
             })
         });
     } else if(pathname === '/update'){ //update 버튼 클릭한 뒤
-        fs.readdir('./data', function(error, filelist){
-            var filteredId = path.parse(queryData.id).base;
-            fs.readFile(`data/${filteredId}`, 'utf8', function(err, description){
-                var title = queryData.id;
-                var list = template.list(filelist);
-                var html = template.HTML(title, list,
+        fs.readdir('./data', function(error, fileList){
+            let filteredId = path.parse(queryData.id).base;
+            fs.readFile(`data/${filteredId}`, 'utf8', function(err, data){
+                let text = JSON.parse(data);
+                let title = text.title;
+                let description = text.description;
+                let writer = text.writer;
+                let list = template.list(fileList);
+                let html = template.HTML(title, list,
                     `
             <form action="/update_process" method="post">
               <input type="hidden" name="id" value="${title}">
               <p><input type="text" name="title" placeholder="title" value="${title}"></p>
+              <p><input type="text" name="writer" placeholder="writer" value="${writer}"></p>
               <p>
                 <textarea name="description" placeholder="description">${description}</textarea>
               </p>
@@ -97,7 +117,7 @@ var app = http.createServer(function(request,response){
               </p>
             </form>
             `,
-                    `<a href="/create">create</a> <a href="/update?id=${title}">update</a>`
+                    `<a href="/create">create</a> <a href="/update?id=${title}">update</a>`, ``
                 );
                 response.writeHead(200);
                 response.end(html);
@@ -109,34 +129,39 @@ var app = http.createServer(function(request,response){
             body = body + data;
         });
         request.on('end', function(){
-            var post = qs.parse(body);
-            var id = post.id; //원래 글의 제목
-            var title = post.title;
-            var description = post.description;
-            var filteredId = path.parse(queryData.id).base; //읽기 보안
-            fs.rename(`data/${filteredId}`, `data/${title}`, function(error){
-                fs.writeFile(`data/${title}`, description, 'utf8', function(err){
+            let post = qs.parse(body);
+            let id = post.id; //원래 글의 제목
+            let title = post.title;
+            let writer = post.writer;
+            let description = post.description;
+            let text = {
+                "title": title,
+                "writer": writer,
+                "description": description
+            }
+            let updated_data = JSON.stringify(text, null);
+            fs.rename(`data/${id}`, `data/${title}`, function(error){
+                fs.writeFile(`data/${title}`, updated_data, 'utf8', function(err){
                     response.writeHead(302, {Location: `/?id=${title}`});
                     response.end();
                 })
             });
         })
-    } else if(pathname === '/delete_process'){
-        var body = '';
+    } else if(pathname === '/delete_process'){//글 삭제한 뒤
+        let body = '';
         request.on('data', function(data){
             body = body + data;
         });
         request.on('end', function(){
-            var post = qs.parse(body);
-            console.log(post)
-            var id = post.id;
-            var filteredId = path.parse(queryData.id).base;
-            fs.unlink(`data/${filteredId}`, function (error){
+            let post = qs.parse(body);
+            let id = post.id;
+            //let filteredId = path.parse(queryData.id).base;
+            fs.unlink(`data/${id}`, function (error){
                 response.writeHead(302, {Location: `/`});
                 response.end();
             })
         });
-    } else {
+    } else {//잘못된 url 입력시
         response.writeHead(404);
         response.end('Not found');
     }
